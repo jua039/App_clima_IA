@@ -1,37 +1,123 @@
 /**
  * main.js
- * Punto de entrada de la aplicación. Conecta los eventos de la interfaz
- * con la lógica de api.js y la presentación de ui.js.
+ * -----------------------------------------------------------------
+ * Director de orquesta de la app.
+ *
+ * CAMBIOS DE LA VERSIÓN DEPURADA:
+ *   1) Botón deshabilitado mientras carga (evita doble envío).
+ *   2) AbortController: si el usuario busca de nuevo antes de que
+ *      termine la búsqueda anterior, esa búsqueda vieja se cancela
+ *      en vez de dejar que ambas respuestas compitan (race condition).
+ *   3) Manejo de CiudadAmbiguaError: si hay varias ciudades con el
+ *      mismo nombre, se le pide al usuario que elija una.
+ * -----------------------------------------------------------------
  */
 
-import { fetchWeatherByCity, CityNotFoundError } from './api.js';
-import { renderLoading, renderWeather, renderError } from './ui.js';
+import { obtenerClimaPorCoordenadas, buscarCiudades, CiudadAmbiguaError } from './api.js';
+import {
+  mostrarCargando,
+  mostrarClima,
+  mostrarError,
+  mostrarOpcionesCiudad,
+  establecerBotonCargando,
+} from './ui.js';
 
-const form = document.getElementById('search-form');
-const cityInput = document.getElementById('city-input');
+const inputCiudad = document.getElementById('ciudad');
+const botonBuscar = document.getElementById('buscar');
+
+// Guardamos aquí el "controlador" de la búsqueda en curso, para poder
+// cancelarla si el usuario dispara una nueva antes de que termine.
+let controladorActual = null;
 
 /**
- * Maneja el envío del formulario (clic en "Buscar" o Enter en el input,
- * ya que ambos disparan el evento "submit" de un <form>).
+ * buscarClima()
+ * Se ejecuta cuando el usuario quiere consultar el clima
+ * (clic en el botón o Enter en el input).
  */
-async function handleSearch(event) {
-  event.preventDefault(); // Evita que la página se recargue
+async function buscarClima() {
+  const ciudad = inputCiudad.value;
 
-  const city = cityInput.value;
+  // --- Paso 1: cancelar cualquier búsqueda anterior todavía en curso ---
+  if (controladorActual) {
+    controladorActual.abort();
+  }
+  controladorActual = new AbortController();
+  const { signal } = controladorActual;
 
-  renderLoading();
+  mostrarCargando();
+  establecerBotonCargando(botonBuscar, true);
 
   try {
-    const weatherData = await fetchWeatherByCity(city);
-    renderWeather(weatherData);
-  } catch (error) {
-    // Distinguimos el mensaje según el tipo de error para dar feedback claro
-    if (error instanceof CityNotFoundError) {
-      renderError(error.message);
+    const opciones = await buscarCiudades(ciudad, signal);
+
+    if (opciones.length === 1) {
+      await mostrarClimaDeOpcion(opciones[0], signal);
     } else {
-      renderError(error.message || 'Ocurrió un error inesperado. Intenta de nuevo.');
+      // Varias coincidencias: dejamos que el usuario elija
+      mostrarOpcionesCiudad(opciones, (opcionElegida) => {
+        mostrarClimaDeOpcion(opcionElegida, signal);
+      });
+    }
+  } catch (error) {
+    manejarError(error);
+  } finally {
+    // Solo "apagamos" el estado de carga si esta sigue siendo la
+    // búsqueda vigente (no una vieja que fue cancelada)
+    if (controladorActual?.signal === signal) {
+      establecerBotonCargando(botonBuscar, false);
     }
   }
 }
 
-form.addEventListener('submit', handleSearch);
+/**
+ * mostrarClimaDeOpcion(opcion, signal)
+ * Dada una ciudad ya elegida (sin ambigüedad), pide su clima y lo muestra.
+ */
+async function mostrarClimaDeOpcion(opcion, signal) {
+  try {
+    establecerBotonCargando(botonBuscar, true);
+    const clima = await obtenerClimaPorCoordenadas(opcion.lat, opcion.lon, signal);
+
+    mostrarClima({
+      ciudad: opcion.pais ? `${opcion.ciudad}, ${opcion.pais}` : opcion.ciudad,
+      temperatura: clima.temperatura,
+      weathercode: clima.weathercode,
+    });
+  } catch (error) {
+    manejarError(error);
+  } finally {
+    establecerBotonCargando(botonBuscar, false);
+  }
+}
+
+/**
+ * manejarError(error)
+ * Centraliza cómo reaccionamos a los distintos tipos de error.
+ */
+function manejarError(error) {
+  // Una búsqueda cancelada a propósito (por una búsqueda más nueva)
+  // NO es un error real: simplemente no hacemos nada y dejamos que
+  // la búsqueda nueva tome el control de la pantalla.
+  if (error.name === 'AbortError') {
+    return;
+  }
+
+  if (error instanceof CiudadAmbiguaError) {
+    mostrarOpcionesCiudad(error.opciones, (opcionElegida) => {
+      mostrarClimaDeOpcion(opcionElegida, controladorActual.signal);
+    });
+    return;
+  }
+
+  mostrarError(error.message);
+}
+
+// Evento 1: clic en el botón "Buscar"
+botonBuscar.addEventListener('click', buscarClima);
+
+// Evento 2: tecla Enter dentro del input
+inputCiudad.addEventListener('keydown', (evento) => {
+  if (evento.key === 'Enter') {
+    buscarClima();
+  }
+});

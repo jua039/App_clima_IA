@@ -1,63 +1,71 @@
 /**
  * utils.js
- * Funciones auxiliares puras (sin efectos secundarios ni acceso al DOM).
- * Se encargan de traducir datos "crudos" de la API a algo legible para humanos.
+ * -----------------------------------------------------------------
+ * Funciones auxiliares "puras": reciben un dato y devuelven otro dato,
+ * sin tocar el DOM ni hacer peticiones a internet. Esto las hace
+ * fáciles de leer, probar y reutilizar.
+ * -----------------------------------------------------------------
  */
 
 /**
- * Formatea un valor numérico de temperatura a un string legible.
- * @param {number} temp - Temperatura en grados.
- * @param {string} unit - Símbolo de la unidad (por defecto Celsius).
- * @returns {string} Ej: "21.5 °C"
+ * Tabla que traduce cada "weathercode" (código numérico que usa Open-Meteo)
+ * a una descripción en español.
+ * Fuente oficial de los códigos: https://open-meteo.com/en/docs
  */
-export function formatTemperature(temp, unit = '°C') {
-  // Redondeamos a 1 decimal para mantener consistencia visual
-  const rounded = Math.round(temp * 10) / 10;
-  return `${rounded} ${unit}`;
-}
-
-/**
- * Tabla de mapeo de códigos WMO (weather code) que usa Open-Meteo
- * a una descripción en español y un ícono representativo (emoji).
- * Referencia: https://open-meteo.com/en/docs (sección "WMO Weather interpretation codes")
- */
-const WEATHER_CODE_MAP = {
-  0: { text: 'Cielo despejado', icon: '☀️' },
-  1: { text: 'Mayormente despejado', icon: '🌤️' },
-  2: { text: 'Parcialmente nublado', icon: '⛅' },
-  3: { text: 'Nublado', icon: '☁️' },
-  45: { text: 'Niebla', icon: '🌫️' },
-  48: { text: 'Niebla con escarcha', icon: '🌫️' },
-  51: { text: 'Llovizna ligera', icon: '🌦️' },
-  53: { text: 'Llovizna moderada', icon: '🌦️' },
-  55: { text: 'Llovizna intensa', icon: '🌧️' },
-  56: { text: 'Llovizna helada ligera', icon: '🌧️' },
-  57: { text: 'Llovizna helada intensa', icon: '🌧️' },
-  61: { text: 'Lluvia ligera', icon: '🌧️' },
-  63: { text: 'Lluvia moderada', icon: '🌧️' },
-  65: { text: 'Lluvia intensa', icon: '🌧️' },
-  66: { text: 'Lluvia helada ligera', icon: '🌧️' },
-  67: { text: 'Lluvia helada intensa', icon: '🌧️' },
-  71: { text: 'Nevada ligera', icon: '🌨️' },
-  73: { text: 'Nevada moderada', icon: '🌨️' },
-  75: { text: 'Nevada intensa', icon: '❄️' },
-  77: { text: 'Granos de nieve', icon: '❄️' },
-  80: { text: 'Chubascos ligeros', icon: '🌦️' },
-  81: { text: 'Chubascos moderados', icon: '🌧️' },
-  82: { text: 'Chubascos violentos', icon: '⛈️' },
-  85: { text: 'Chubascos de nieve ligeros', icon: '🌨️' },
-  86: { text: 'Chubascos de nieve intensos', icon: '🌨️' },
-  95: { text: 'Tormenta eléctrica', icon: '⛈️' },
-  96: { text: 'Tormenta con granizo ligero', icon: '⛈️' },
-  99: { text: 'Tormenta con granizo intenso', icon: '⛈️' },
+const DESCRIPCIONES_CLIMA = {
+  0: 'Despejado',
+  1: 'Parcialmente nublado',
+  2: 'Parcialmente nublado',
+  3: 'Nublado',
+  45: 'Niebla',
+  48: 'Niebla con escarcha',
+  51: 'Llovizna ligera',
+  53: 'Llovizna moderada',
+  55: 'Llovizna intensa',
+  56: 'Llovizna helada ligera',
+  57: 'Llovizna helada intensa',
+  61: 'Lluvia ligera',
+  63: 'Lluvia moderada',
+  65: 'Lluvia intensa',
+  66: 'Lluvia helada ligera',
+  67: 'Lluvia helada intensa',
+  71: 'Nevada ligera',
+  73: 'Nevada moderada',
+  75: 'Nevada intensa',
+  77: 'Granos de nieve',
+  80: 'Chubascos ligeros',
+  81: 'Chubascos moderados',
+  82: 'Chubascos violentos',
+  85: 'Chubascos de nieve ligeros',
+  86: 'Chubascos de nieve intensos',
+  95: 'Tormenta eléctrica',
+  96: 'Tormenta con granizo ligero',
+  99: 'Tormenta con granizo intenso',
 };
 
 /**
- * Traduce un weather code de Open-Meteo a { text, icon }.
- * Si el código no está en la tabla, devuelve un valor genérico en vez de fallar.
- * @param {number} code
- * @returns {{text: string, icon: string}}
+ * traducirWeatherCode(codigo)
+ * ----------------------------
+ * Recibe el código numérico del clima y devuelve su descripción en español.
+ * Si el código no existe en nuestra tabla, devolvemos un texto genérico
+ * en vez de dejar que la app falle.
+ *
+ * @param {number} codigo - weathercode que devuelve Open-Meteo.
+ * @returns {string} Descripción en español, ej: "Despejado".
  */
-export function getWeatherDescription(code) {
-  return WEATHER_CODE_MAP[code] ?? { text: 'Condición desconocida', icon: '❔' };
+export function traducirWeatherCode(codigo) {
+  return DESCRIPCIONES_CLIMA[codigo] ?? 'Condición desconocida';
+}
+
+/**
+ * formatearTemperatura(temperatura)
+ * -----------------------------------
+ * Redondea la temperatura a 1 decimal y le agrega el símbolo de grados.
+ *
+ * @param {number} temperatura
+ * @returns {string} Ej: "21.5 °C"
+ */
+export function formatearTemperatura(temperatura) {
+  const redondeada = Math.round(temperatura * 10) / 10;
+  return `${redondeada} °C`;
 }

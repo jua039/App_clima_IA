@@ -1,114 +1,145 @@
 /**
  * api.js
- * Toda la comunicación con las APIs externas de Open-Meteo vive aquí.
- * Ningún otro módulo debería llamar a fetch() directamente.
+ * -----------------------------------------------------------------
+ * Este archivo se encarga de "hablar" con las APIs externas.
+ * Ningún otro archivo debería usar fetch() directamente.
+ *
+ * CAMBIOS DE LA VERSIÓN DEPURADA:
+ *   - Se separó la búsqueda de ciudad (buscarCiudades) del clima
+ *     (obtenerClimaPorCoordenadas), porque ahora podemos recibir
+ *     VARIAS coincidencias (ej. "Córdoba" -> España o Argentina)
+ *     y dejar que el usuario elija, en vez de tomar la primera a ciegas.
+ *   - Ambas funciones aceptan una AbortSignal opcional, para poder
+ *     cancelar peticiones viejas si el usuario busca de nuevo antes
+ *     de que la anterior termine (evita condiciones de carrera).
+ * -----------------------------------------------------------------
  */
 
-const GEOCODING_URL = 'https://geocoding-api.open-meteo.com/v1/search';
-const WEATHER_URL = 'https://api.open-meteo.com/v1/forecast';
+const URL_GEOCODIFICACION = 'https://geocoding-api.open-meteo.com/v1/search';
+const URL_CLIMA = 'https://api.open-meteo.com/v1/forecast';
 
 /**
- * Error personalizado para poder distinguir "ciudad no encontrada"
- * de otros errores (red, API caída, etc.) en la capa de UI.
+ * buscarCiudades(nombre, signal)
+ * -------------------------------
+ * Busca todas las ciudades que coincidan con el nombre escrito
+ * (hasta 5), en vez de asumir que la primera es la correcta.
+ *
+ * @param {string} nombre
+ * @param {AbortSignal} [signal] - Para poder cancelar la petición.
+ * @returns {Promise<Array<{ ciudad: string, pais: string, lat: number, lon: number }>>}
  */
-export class CityNotFoundError extends Error {
-  constructor(cityName) {
-    super(`No se encontró la ciudad "${cityName}".`);
-    this.name = 'CityNotFoundError';
+export async function buscarCiudades(nombre, signal) {
+  const nombreLimpio = nombre.trim();
+  if (!nombreLimpio) {
+    throw new Error('Debes escribir el nombre de una ciudad.');
   }
-}
 
-/**
- * Convierte el nombre de una ciudad en coordenadas (lat/lon)
- * usando la API de Geocodificación de Open-Meteo.
- * @param {string} cityName
- * @returns {Promise<{ lat: number, lon: number, name: string, country: string }>}
- */
-async function getCoordinates(cityName) {
-  const url = `${GEOCODING_URL}?name=${encodeURIComponent(cityName)}&count=1&language=es&format=json`;
+  const url = `${URL_GEOCODIFICACION}?name=${encodeURIComponent(nombreLimpio)}&count=5&language=es&format=json`;
 
-  let response;
+  let respuesta;
   try {
-    response = await fetch(url);
-  } catch {
-    // Error de red (sin conexión, DNS, CORS bloqueado, etc.)
+    respuesta = await fetch(url, { signal });
+  } catch (error) {
+    // Si la petición fue cancelada a propósito (nueva búsqueda encima),
+    // relanzamos el error tal cual para que quien llama lo identifique
+    // y NO lo muestre como un error real al usuario.
+    if (error.name === 'AbortError') throw error;
     throw new Error('No se pudo conectar con el servicio de geocodificación. Revisa tu conexión.');
   }
 
-  if (!response.ok) {
-    throw new Error(`Error del servicio de geocodificación (código ${response.status}).`);
+  if (!respuesta.ok) {
+    throw new Error('No se pudo consultar el servicio de geocodificación.');
   }
 
-  const data = await response.json();
+  const datos = await respuesta.json();
 
-  // Si no hay resultados, la API devuelve "results" undefined o vacío
-  if (!data.results || data.results.length === 0) {
-    throw new CityNotFoundError(cityName);
+  if (!datos.results || datos.results.length === 0) {
+    throw new Error(`No se encontró la ciudad "${nombreLimpio}". Verifica el nombre e intenta de nuevo.`);
   }
 
-  const [first] = data.results;
-  return {
-    lat: first.latitude,
-    lon: first.longitude,
-    name: first.name,
-    country: first.country ?? '',
-  };
+  // Mapeamos cada resultado a la forma que usa el resto de la app
+  return datos.results.map((resultado) => ({
+    ciudad: resultado.name,
+    pais: resultado.country ?? '',
+    lat: resultado.latitude,
+    lon: resultado.longitude,
+  }));
 }
 
 /**
- * Consulta el clima actual para unas coordenadas dadas.
+ * obtenerClimaPorCoordenadas(lat, lon, signal)
+ * ---------------------------------------------
+ * Dado un par de coordenadas, devuelve el clima actual.
+ *
  * @param {number} lat
  * @param {number} lon
- * @returns {Promise<{ temperature: number, weatherCode: number, windSpeed: number }>}
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ temperatura: number, weathercode: number }>}
  */
-async function getCurrentWeather(lat, lon) {
-  const url = `${WEATHER_URL}?latitude=${lat}&longitude=${lon}&current_weather=true`;
+export async function obtenerClimaPorCoordenadas(lat, lon, signal) {
+  const url = `${URL_CLIMA}?latitude=${lat}&longitude=${lon}&current_weather=true`;
 
-  let response;
+  let respuesta;
   try {
-    response = await fetch(url);
-  } catch {
+    respuesta = await fetch(url, { signal });
+  } catch (error) {
+    if (error.name === 'AbortError') throw error;
     throw new Error('No se pudo conectar con el servicio del clima. Revisa tu conexión.');
   }
 
-  if (!response.ok) {
-    throw new Error(`Error del servicio del clima (código ${response.status}).`);
+  if (!respuesta.ok) {
+    throw new Error('No se pudo consultar el servicio del clima.');
   }
 
-  const data = await response.json();
+  const datos = await respuesta.json();
 
-  if (!data.current_weather) {
-    throw new Error('La respuesta de la API no incluyó datos de clima actual.');
+  if (!datos.current_weather) {
+    throw new Error('La API no devolvió información del clima actual.');
   }
 
   return {
-    temperature: data.current_weather.temperature,
-    weatherCode: data.current_weather.weathercode,
-    windSpeed: data.current_weather.windspeed,
+    temperatura: datos.current_weather.temperature,
+    weathercode: datos.current_weather.weathercode,
   };
 }
 
 /**
- * Función principal que orquesta geocodificación + clima.
- * Es la única función que main.js necesita llamar.
- * @param {string} cityName
- * @returns {Promise<{ city: string, country: string, temperature: number, weatherCode: number, windSpeed: number }>}
+ * obtenerClima(ciudad, signal)
+ * ------------------------------
+ * Función de conveniencia para el caso simple: busca la ciudad y,
+ * SI HAY UNA SOLA COINCIDENCIA, devuelve directamente su clima.
+ * Si hay varias coincidencias, lanza un error especial `CiudadAmbiguaError`
+ * con la lista de opciones, para que main.js/ui.js le pregunten al usuario.
+ *
+ * @param {string} ciudad
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{ ciudad: string, temperatura: number, weathercode: number }>}
  */
-export async function fetchWeatherByCity(cityName) {
-  const trimmedName = cityName.trim();
+export async function obtenerClima(ciudad, signal) {
+  const opciones = await buscarCiudades(ciudad, signal);
 
-  if (!trimmedName) {
-    throw new Error('Por favor escribe el nombre de una ciudad.');
+  if (opciones.length > 1) {
+    throw new CiudadAmbiguaError(opciones);
   }
 
-  const { lat, lon, name, country } = await getCoordinates(trimmedName);
-  const weather = await getCurrentWeather(lat, lon);
+  const [unica] = opciones;
+  const clima = await obtenerClimaPorCoordenadas(unica.lat, unica.lon, signal);
 
   return {
-    city: name,
-    country,
-    temperature: weather.temperature,
-    weatherCode: weather.weatherCode,
-    windSpeed: weather.windSpeed,
+    ciudad: unica.pais ? `${unica.ciudad}, ${unica.pais}` : unica.ciudad,
+    temperatura: clima.temperatura,
+    weathercode: clima.weathercode,
   };
+}
+
+/**
+ * Error personalizado para el caso "hay más de una ciudad con ese nombre".
+ * Lleva las opciones adentro para que la UI pueda mostrarlas.
+ */
+export class CiudadAmbiguaError extends Error {
+  constructor(opciones) {
+    super('Hay varias ciudades con ese nombre. Elige una.');
+    this.name = 'CiudadAmbiguaError';
+    this.opciones = opciones;
+  }
 }
