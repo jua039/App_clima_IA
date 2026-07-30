@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clima Ahora | Consulta el clima de cualquier ciudad</title>
+
+  <!-- Tipografías: Fraunces (display, para el número de temperatura) + Inter (texto general) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/weather-app/css/styles.css" />
+</head>
+<body>
+
+  <main class="app">
+    <!-- Fondo atmosférico decorativo (solo visual, no interactivo) -->
+    <div class="sky" aria-hidden="true">
+      <div class="sky__orb sky__orb--sun"></div>
+      <div class="sky__orb sky__orb--glow"></div>
+    </div>
+
+    <section class="card" role="main">
+      <header class="card__header">
+        <p class="eyebrow">Clima ahora</p>
+        <h1 class="title">¿Qué tiempo hace hoy?</h1>
+        <p class="subtitle">Escribe una ciudad y consulta su clima actual al instante.</p>
+      </header>
+
+      <!-- Formulario de búsqueda -->
+      <form id="search-form" class="search" autocomplete="off">
+        <label for="city-input" class="visually-hidden">Nombre de la ciudad</label>
+        <input
+          type="text"
+          id="city-input"
+          class="search__input"
+          placeholder="Ej. Bogotá, Madrid, Tokio…"
+          required
+        />
+        <button type="submit" id="search-btn" class="search__button">
+          Buscar
+        </button>
+      </form>
+
+      <!-- Contenedor donde se renderiza el resultado, el loading o el error -->
+      <div id="result-container" class="result" aria-live="polite">
+        <p class="result__placeholder">Tu resultado aparecerá aquí.</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/weather-app/js/main.js"></script>
+</body>
+</html>
