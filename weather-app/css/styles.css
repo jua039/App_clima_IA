@@ -232,9 +232,19 @@ body {
 }
 
 .clima__descripcion {
-    margin: 0;
+    margin: 0 0 10px;
     color: var(--color-acento);
     font-weight: 500;
+}
+
+.clima__insignia-cache {
+    display: inline-block;
+    font-size: 0.75rem;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(244, 169, 69, 0.15);
+    color: var(--color-acento);
+    border: 1px solid rgba(244, 169, 69, 0.3);
 }
 
 /* =====================================================================

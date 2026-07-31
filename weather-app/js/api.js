@@ -12,8 +12,13 @@
  *   - Ambas funciones aceptan una AbortSignal opcional, para poder
  *     cancelar peticiones viejas si el usuario busca de nuevo antes
  *     de que la anterior termine (evita condiciones de carrera).
+ *   - El clima por coordenadas ahora usa caché (ver cache.js): si ya
+ *     se consultó esa ubicación hace menos de 1 hora, se devuelve el
+ *     resultado guardado en vez de repetir la petición a la API.
  * -----------------------------------------------------------------
  */
+
+import { obtenerClimaDeCache, guardarClimaEnCache } from './cache.js';
 
 const URL_GEOCODIFICACION = 'https://geocoding-api.open-meteo.com/v1/search';
 const URL_CLIMA = 'https://api.open-meteo.com/v1/forecast';
@@ -71,12 +76,22 @@ export async function buscarCiudades(nombre, signal) {
  * ---------------------------------------------
  * Dado un par de coordenadas, devuelve el clima actual.
  *
+ * Antes de consultar la API, revisa si ya hay un resultado en caché
+ * (válido por 1 hora) para esas coordenadas. Si lo hay, lo devuelve
+ * de inmediato sin gastar una petición de red.
+ *
  * @param {number} lat
  * @param {number} lon
  * @param {AbortSignal} [signal]
- * @returns {Promise<{ temperatura: number, weathercode: number }>}
+ * @returns {Promise<{ temperatura: number, weathercode: number, desdeCache: boolean }>}
  */
 export async function obtenerClimaPorCoordenadas(lat, lon, signal) {
+  // --- Paso 0: ¿ya tenemos esto guardado y sigue vigente? ---
+  const climaCacheado = obtenerClimaDeCache(lat, lon);
+  if (climaCacheado) {
+    return { ...climaCacheado, desdeCache: true };
+  }
+
   const url = `${URL_CLIMA}?latitude=${lat}&longitude=${lon}&current_weather=true`;
 
   let respuesta;
@@ -97,10 +112,15 @@ export async function obtenerClimaPorCoordenadas(lat, lon, signal) {
     throw new Error('La API no devolvió información del clima actual.');
   }
 
-  return {
+  const resultado = {
     temperatura: datos.current_weather.temperature,
     weathercode: datos.current_weather.weathercode,
   };
+
+  // Guardamos en caché para futuras consultas de esta misma ubicación
+  guardarClimaEnCache(lat, lon, resultado);
+
+  return { ...resultado, desdeCache: false };
 }
 
 /**
@@ -113,7 +133,7 @@ export async function obtenerClimaPorCoordenadas(lat, lon, signal) {
  *
  * @param {string} ciudad
  * @param {AbortSignal} [signal]
- * @returns {Promise<{ ciudad: string, temperatura: number, weathercode: number }>}
+ * @returns {Promise<{ ciudad: string, temperatura: number, weathercode: number, desdeCache: boolean }>}
  */
 export async function obtenerClima(ciudad, signal) {
   const opciones = await buscarCiudades(ciudad, signal);
@@ -129,6 +149,7 @@ export async function obtenerClima(ciudad, signal) {
     ciudad: unica.pais ? `${unica.ciudad}, ${unica.pais}` : unica.ciudad,
     temperatura: clima.temperatura,
     weathercode: clima.weathercode,
+    desdeCache: clima.desdeCache,
   };
 }
 

@@ -1,104 +1,124 @@
 /**
- * ui.js
+ * main.js
  * -----------------------------------------------------------------
- * Único archivo que toca el DOM.
+ * Director de orquesta de la app.
  *
  * CAMBIOS DE LA VERSIÓN DEPURADA:
- *   - Nueva función mostrarOpcionesCiudad() para el caso de ciudades
- *     ambiguas (ej. "Córdoba"): en vez de adivinar, se le muestran
- *     las opciones al usuario y él elige.
+ *   1) Botón deshabilitado mientras carga (evita doble envío).
+ *   2) AbortController: si el usuario busca de nuevo antes de que
+ *      termine la búsqueda anterior, esa búsqueda vieja se cancela
+ *      en vez de dejar que ambas respuestas compitan (race condition).
+ *   3) Manejo de CiudadAmbiguaError: si hay varias ciudades con el
+ *      mismo nombre, se le pide al usuario que elija una.
  * -----------------------------------------------------------------
  */
 
-import { traducirWeatherCode, formatearTemperatura } from './utils.js';
+import { obtenerClimaPorCoordenadas, buscarCiudades, CiudadAmbiguaError } from './api.js';
+import {
+  mostrarCargando,
+  mostrarClima,
+  mostrarError,
+  mostrarOpcionesCiudad,
+  establecerBotonCargando,
+} from './ui.js';
 
-const contenedorResultado = document.getElementById('resultado');
+const inputCiudad = document.getElementById('ciudad');
+const botonBuscar = document.getElementById('buscar');
 
-export function mostrarCargando() {
-  contenedorResultado.innerHTML = `
-    <div class="estado estado--cargando">
-      <span class="spinner" aria-hidden="true"></span>
-      <p>Buscando el clima...</p>
-    </div>
-  `;
-}
+// Guardamos aquí el "controlador" de la búsqueda en curso, para poder
+// cancelarla si el usuario dispara una nueva antes de que termine.
+let controladorActual = null;
 
-export function mostrarClima(datosClima) {
-  const { ciudad, temperatura, weathercode } = datosClima;
+/**
+ * buscarClima()
+ * Se ejecuta cuando el usuario quiere consultar el clima
+ * (clic en el botón o Enter en el input).
+ */
+async function buscarClima() {
+  const ciudad = inputCiudad.value;
 
-  const descripcion = traducirWeatherCode(weathercode);
-  const temperaturaTexto = formatearTemperatura(temperatura);
+  // --- Paso 1: cancelar cualquier búsqueda anterior todavía en curso ---
+  if (controladorActual) {
+    controladorActual.abort();
+  }
+  controladorActual = new AbortController();
+  const { signal } = controladorActual;
 
-  contenedorResultado.innerHTML = `
-    <article class="clima">
-      <p class="clima__ciudad">${ciudad}</p>
-      <p class="clima__temperatura">${temperaturaTexto}</p>
-      <p class="clima__descripcion">${descripcion}</p>
-    </article>
-  `;
-}
+  mostrarCargando();
+  establecerBotonCargando(botonBuscar, true);
 
-export function mostrarError(mensaje) {
-  contenedorResultado.innerHTML = `
-    <div class="estado estado--error" role="alert">
-      <span aria-hidden="true">⚠️</span>
-      <p>${mensaje}</p>
-    </div>
-  `;
-}
+  try {
+    const opciones = await buscarCiudades(ciudad, signal);
 
-export function limpiarPantalla() {
-  contenedorResultado.innerHTML = `
-    <p class="placeholder">Escribe una ciudad para ver su clima.</p>
-  `;
+    if (opciones.length === 1) {
+      await mostrarClimaDeOpcion(opciones[0], signal);
+    } else {
+      // Varias coincidencias: dejamos que el usuario elija
+      mostrarOpcionesCiudad(opciones, (opcionElegida) => {
+        mostrarClimaDeOpcion(opcionElegida, signal);
+      });
+    }
+  } catch (error) {
+    manejarError(error);
+  } finally {
+    // Solo "apagamos" el estado de carga si esta sigue siendo la
+    // búsqueda vigente (no una vieja que fue cancelada)
+    if (controladorActual?.signal === signal) {
+      establecerBotonCargando(botonBuscar, false);
+    }
+  }
 }
 
 /**
- * mostrarOpcionesCiudad(opciones, alElegir)
- * -------------------------------------------
- * Muestra una lista de botones, uno por cada ciudad candidata,
- * cuando el nombre buscado es ambiguo (ej. varias "Córdoba").
- *
- * @param {Array<{ ciudad: string, pais: string, lat: number, lon: number }>} opciones
- * @param {(opcion: { ciudad: string, pais: string, lat: number, lon: number }) => void} alElegir
- *        Función que se ejecuta cuando el usuario hace clic en una opción.
+ * mostrarClimaDeOpcion(opcion, signal)
+ * Dada una ciudad ya elegida (sin ambigüedad), pide su clima y lo muestra.
  */
-export function mostrarOpcionesCiudad(opciones, alElegir) {
-  const botones = opciones
-    .map((opcion, indice) => {
-      const etiqueta = opcion.pais ? `${opcion.ciudad}, ${opcion.pais}` : opcion.ciudad;
-      // Guardamos el índice en un data-attribute para saber cuál se eligió
-      return `<button type="button" class="opcion-ciudad" data-indice="${indice}">${etiqueta}</button>`;
-    })
-    .join('');
+async function mostrarClimaDeOpcion(opcion, signal) {
+  try {
+    establecerBotonCargando(botonBuscar, true);
+    const clima = await obtenerClimaPorCoordenadas(opcion.lat, opcion.lon, signal);
 
-  contenedorResultado.innerHTML = `
-    <div class="estado estado--opciones">
-      <p>Encontramos varias ciudades. ¿Cuál buscabas?</p>
-      <div class="opciones-ciudad">${botones}</div>
-    </div>
-  `;
-
-  // Conectamos el clic de cada botón con la función que nos pasaron
-  contenedorResultado.querySelectorAll('.opcion-ciudad').forEach((boton) => {
-    boton.addEventListener('click', () => {
-      const indice = Number(boton.dataset.indice);
-      alElegir(opciones[indice]);
+    mostrarClima({
+      ciudad: opcion.pais ? `${opcion.ciudad}, ${opcion.pais}` : opcion.ciudad,
+      temperatura: clima.temperatura,
+      weathercode: clima.weathercode,
+      desdeCache: clima.desdeCache,
     });
-  });
+  } catch (error) {
+    manejarError(error);
+  } finally {
+    establecerBotonCargando(botonBuscar, false);
+  }
 }
 
 /**
- * establecerBotonCargando(boton, estaCargando)
- * -----------------------------------------------
- * Deshabilita el botón de búsqueda mientras hay una petición en curso,
- * para evitar que el usuario dispare varias búsquedas en paralelo
- * con clics repetidos.
- *
- * @param {HTMLButtonElement} boton
- * @param {boolean} estaCargando
+ * manejarError(error)
+ * Centraliza cómo reaccionamos a los distintos tipos de error.
  */
-export function establecerBotonCargando(boton, estaCargando) {
-  boton.disabled = estaCargando;
-  boton.textContent = estaCargando ? 'Buscando…' : 'Buscar';
+function manejarError(error) {
+  // Una búsqueda cancelada a propósito (por una búsqueda más nueva)
+  // NO es un error real: simplemente no hacemos nada y dejamos que
+  // la búsqueda nueva tome el control de la pantalla.
+  if (error.name === 'AbortError') {
+    return;
+  }
+
+  if (error instanceof CiudadAmbiguaError) {
+    mostrarOpcionesCiudad(error.opciones, (opcionElegida) => {
+      mostrarClimaDeOpcion(opcionElegida, controladorActual.signal);
+    });
+    return;
+  }
+
+  mostrarError(error.message);
 }
+
+// Evento 1: clic en el botón "Buscar"
+botonBuscar.addEventListener('click', buscarClima);
+
+// Evento 2: tecla Enter dentro del input
+inputCiudad.addEventListener('keydown', (evento) => {
+  if (evento.key === 'Enter') {
+    buscarClima();
+  }
+});
