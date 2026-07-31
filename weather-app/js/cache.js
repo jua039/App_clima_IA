@@ -86,24 +86,26 @@ function generarClave(lat, lon) {
 }
 
 /**
- * obtenerClimaDeCache(lat, lon)
- * --------------------------------
- * Devuelve los datos de clima guardados para esas coordenadas,
- * SOLO si todavía están vigentes (menos de 1 hora de antigüedad).
- * Si expiraron o no existen, devuelve `null` y limpia la entrada vieja.
+ * obtenerDeCache(clave, duracionMs)
+ * -------------------------------------
+ * Función GENÉRICA de lectura: devuelve lo guardado bajo `clave`
+ * solo si todavía está vigente (más nuevo que `duracionMs`).
+ * Si expiró o no existe, devuelve `null` y limpia la entrada vieja.
  *
- * @param {number} lat
- * @param {number} lon
- * @returns {{ temperatura: number, weathercode: number } | null}
+ * Es la base sobre la que se construyen las funciones específicas
+ * de más abajo (clima actual, pronóstico, etc.), para no repetir la
+ * lógica de expiración en cada una.
+ *
+ * @param {string} clave
+ * @param {number} [duracionMs] - Antigüedad máxima permitida (por defecto 1 hora).
+ * @returns {*} Los datos guardados, o `null` si no hay nada vigente.
  */
-export function obtenerClimaDeCache(lat, lon) {
-  const clave = generarClave(lat, lon);
+export function obtenerDeCache(clave, duracionMs = DURACION_CACHE_MS) {
   const entrada = leerValor(clave);
-
   if (!entrada) return null;
 
   const antiguedadMs = Date.now() - entrada.timestamp;
-  if (antiguedadMs > DURACION_CACHE_MS) {
+  if (antiguedadMs > duracionMs) {
     eliminarValor(clave); // expiró: la limpiamos para no dejar basura
     return null;
   }
@@ -112,15 +114,111 @@ export function obtenerClimaDeCache(lat, lon) {
 }
 
 /**
- * guardarClimaEnCache(lat, lon, datos)
- * ---------------------------------------
- * Guarda los datos de clima junto con la marca de tiempo actual.
+ * guardarEnCache(clave, datos)
+ * ---------------------------------
+ * Función GENÉRICA de escritura: guarda `datos` bajo `clave` junto
+ * con la marca de tiempo actual, para que obtenerDeCache() pueda
+ * calcular después si sigue vigente.
+ *
+ * @param {string} clave
+ * @param {*} datos
+ */
+export function guardarEnCache(clave, datos) {
+  guardarValor(clave, { datos, timestamp: Date.now() });
+}
+
+/**
+ * obtenerClimaDeCache(lat, lon)
+ * --------------------------------
+ * Devuelve los datos de clima actual guardados para esas coordenadas,
+ * si aún son válidos (menos de 1 hora de antigüedad).
  *
  * @param {number} lat
  * @param {number} lon
- * @param {{ temperatura: number, weathercode: number }} datos
+ * @returns {object | null}
+ */
+export function obtenerClimaDeCache(lat, lon) {
+  return obtenerDeCache(generarClave(lat, lon));
+}
+
+/**
+ * guardarClimaEnCache(lat, lon, datos)
+ * ---------------------------------------
+ * Guarda los datos de clima actual junto con la marca de tiempo actual.
+ *
+ * @param {number} lat
+ * @param {number} lon
+ * @param {object} datos
  */
 export function guardarClimaEnCache(lat, lon, datos) {
-  const clave = generarClave(lat, lon);
-  guardarValor(clave, { datos, timestamp: Date.now() });
+  guardarEnCache(generarClave(lat, lon), datos);
+}
+
+/**
+ * obtenerPronosticoDeCache(lat, lon) / guardarPronosticoEnCache(lat, lon, datos)
+ * -----------------------------------------------------------------------------
+ * Igual que las funciones de clima actual, pero para el pronóstico de
+ * 5 días, usando una clave distinta (prefijo "pronostico_") para no
+ * pisar el caché del clima actual de la misma ciudad.
+ */
+function generarClavePronostico(lat, lon) {
+  return `${PREFIJO_CLAVE}pronostico_${lat.toFixed(2)}_${lon.toFixed(2)}`;
+}
+
+export function obtenerPronosticoDeCache(lat, lon) {
+  return obtenerDeCache(generarClavePronostico(lat, lon));
+}
+
+export function guardarPronosticoEnCache(lat, lon, datos) {
+  guardarEnCache(generarClavePronostico(lat, lon), datos);
+}
+
+// -----------------------------------------------------------------
+// Última ciudad buscada: para que el input recuerde el texto al
+// recargar la página. A diferencia del caché de clima, esto NO
+// expira (no tiene sentido "olvidar" lo último que el usuario
+// escribió solo porque pasó una hora).
+// -----------------------------------------------------------------
+
+const CLAVE_ULTIMA_CIUDAD = `${PREFIJO_CLAVE}ultima_ciudad`;
+
+/**
+ * guardarUltimaCiudadBuscada(nombreCiudad)
+ * Guarda el texto que el usuario escribió en el input.
+ * @param {string} nombreCiudad
+ */
+export function guardarUltimaCiudadBuscada(nombreCiudad) {
+  guardarValor(CLAVE_ULTIMA_CIUDAD, nombreCiudad);
+}
+
+/**
+ * obtenerUltimaCiudadBuscada()
+ * Devuelve la última ciudad guardada, o null si nunca se buscó nada.
+ * @returns {string | null}
+ */
+export function obtenerUltimaCiudadBuscada() {
+  return leerValor(CLAVE_ULTIMA_CIUDAD);
+}
+
+// -----------------------------------------------------------------
+// Última lista de ciudades comparadas (modo "Comparar ciudades"):
+// igual que la última ciudad buscada, se recuerda sin expirar.
+// -----------------------------------------------------------------
+
+const CLAVE_ULTIMAS_CIUDADES_COMPARADAS = `${PREFIJO_CLAVE}ultimas_ciudades_comparadas`;
+
+/**
+ * guardarUltimasCiudadesComparadas(textoCiudades)
+ * @param {string} textoCiudades - Texto tal cual lo escribió el usuario.
+ */
+export function guardarUltimasCiudadesComparadas(textoCiudades) {
+  guardarValor(CLAVE_ULTIMAS_CIUDADES_COMPARADAS, textoCiudades);
+}
+
+/**
+ * obtenerUltimasCiudadesComparadas()
+ * @returns {string | null}
+ */
+export function obtenerUltimasCiudadesComparadas() {
+  return leerValor(CLAVE_ULTIMAS_CIUDADES_COMPARADAS);
 }

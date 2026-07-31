@@ -1,124 +1,264 @@
 /**
- * main.js
+ * ui.js
  * -----------------------------------------------------------------
- * Director de orquesta de la app.
+ * Único archivo que toca el DOM.
  *
- * CAMBIOS DE LA VERSIÓN DEPURADA:
- *   1) Botón deshabilitado mientras carga (evita doble envío).
- *   2) AbortController: si el usuario busca de nuevo antes de que
- *      termine la búsqueda anterior, esa búsqueda vieja se cancela
- *      en vez de dejar que ambas respuestas compitan (race condition).
- *   3) Manejo de CiudadAmbiguaError: si hay varias ciudades con el
- *      mismo nombre, se le pide al usuario que elija una.
+ * CAMBIOS DE ESTA VERSIÓN:
+ *   - mostrarClima() ahora también pinta humedad, viento y
+ *     precipitación, además de un ícono y un botón para pedir el
+ *     pronóstico de 5 días.
+ *   - Nueva mostrarPronostico() para el pronóstico extendido.
+ *   - Nueva mostrarComparacion() para el modo de varias ciudades.
+ *   - Nueva cambiarPestana() para alternar entre "Clima actual" y
+ *     "Comparar ciudades".
  * -----------------------------------------------------------------
  */
 
-import { obtenerClimaPorCoordenadas, buscarCiudades, CiudadAmbiguaError } from './api.js';
 import {
-  mostrarCargando,
-  mostrarClima,
-  mostrarError,
-  mostrarOpcionesCiudad,
-  establecerBotonCargando,
-} from './ui.js';
+  traducirWeatherCode,
+  iconoWeatherCode,
+  formatearTemperatura,
+  formatearHumedad,
+  formatearViento,
+  formatearPrecipitacion,
+  formatearDiaSemana,
+} from './utils.js';
 
-const inputCiudad = document.getElementById('ciudad');
-const botonBuscar = document.getElementById('buscar');
+const contenedorResultado = document.getElementById('resultado');
+const contenedorPronostico = document.getElementById('pronostico');
+const contenedorComparar = document.getElementById('resultado-comparar');
+const pestanas = document.querySelectorAll('.pestana');
+const paneles = document.querySelectorAll('.panel');
 
-// Guardamos aquí el "controlador" de la búsqueda en curso, para poder
-// cancelarla si el usuario dispara una nueva antes de que termine.
-let controladorActual = null;
+export function mostrarCargando(contenedor = contenedorResultado) {
+  contenedor.innerHTML = `
+    <div class="estado estado--cargando">
+      <span class="spinner" aria-hidden="true"></span>
+      <p>Buscando el clima...</p>
+    </div>
+  `;
+}
 
 /**
- * buscarClima()
- * Se ejecuta cuando el usuario quiere consultar el clima
- * (clic en el botón o Enter en el input).
+ * mostrarClima(datosClima, alPedirPronostico)
+ * -----------------------------------------------
+ * Pinta la tarjeta de clima actual con temperatura, descripción,
+ * humedad, viento y precipitación. Si se pasa `alPedirPronostico`,
+ * también muestra un botón para cargar el pronóstico de 5 días.
+ *
+ * @param {object} datosClima
+ * @param {() => void} [alPedirPronostico]
  */
-async function buscarClima() {
-  const ciudad = inputCiudad.value;
+export function mostrarClima(datosClima, alPedirPronostico) {
+  const { ciudad, temperatura, weathercode, humedad, vientoKmh, precipitacionMm, desdeCache } = datosClima;
 
-  // --- Paso 1: cancelar cualquier búsqueda anterior todavía en curso ---
-  if (controladorActual) {
-    controladorActual.abort();
+  const descripcion = traducirWeatherCode(weathercode);
+  const icono = iconoWeatherCode(weathercode);
+  const temperaturaTexto = formatearTemperatura(temperatura);
+
+  const insigniaCache = desdeCache
+    ? '<span class="clima__insignia-cache" title="Dato guardado hace menos de 1 hora">⚡ En caché</span>'
+    : '';
+
+  // Reiniciamos el bloque de pronóstico cada vez que se muestra un
+  // clima nuevo, para no dejar visible el pronóstico de la ciudad anterior.
+  if (contenedorPronostico) {
+    contenedorPronostico.innerHTML = '';
   }
-  controladorActual = new AbortController();
-  const { signal } = controladorActual;
 
-  mostrarCargando();
-  establecerBotonCargando(botonBuscar, true);
+  const botonPronostico = alPedirPronostico
+    ? '<button type="button" id="boton-pronostico" class="boton-secundario">📅 Ver pronóstico de 5 días</button>'
+    : '';
 
-  try {
-    const opciones = await buscarCiudades(ciudad, signal);
+  contenedorResultado.innerHTML = `
+    <article class="clima">
+      <p class="clima__ciudad">${ciudad}</p>
+      <div class="clima__cabecera">
+        <span class="clima__icono" aria-hidden="true">${icono}</span>
+        <p class="clima__temperatura">${temperaturaTexto}</p>
+      </div>
+      <p class="clima__descripcion">${descripcion}</p>
+      ${insigniaCache}
+      <div class="clima__detalles">
+        <div class="detalle">
+          <span class="detalle__icono" aria-hidden="true">💧</span>
+          <span class="detalle__etiqueta">Humedad</span>
+          <span class="detalle__valor">${formatearHumedad(humedad)}</span>
+        </div>
+        <div class="detalle">
+          <span class="detalle__icono" aria-hidden="true">💨</span>
+          <span class="detalle__etiqueta">Viento</span>
+          <span class="detalle__valor">${formatearViento(vientoKmh)}</span>
+        </div>
+        <div class="detalle">
+          <span class="detalle__icono" aria-hidden="true">🌧️</span>
+          <span class="detalle__etiqueta">Precipitación</span>
+          <span class="detalle__valor">${formatearPrecipitacion(precipitacionMm)}</span>
+        </div>
+      </div>
+      ${botonPronostico}
+    </article>
+  `;
 
-    if (opciones.length === 1) {
-      await mostrarClimaDeOpcion(opciones[0], signal);
-    } else {
-      // Varias coincidencias: dejamos que el usuario elija
-      mostrarOpcionesCiudad(opciones, (opcionElegida) => {
-        mostrarClimaDeOpcion(opcionElegida, signal);
-      });
-    }
-  } catch (error) {
-    manejarError(error);
-  } finally {
-    // Solo "apagamos" el estado de carga si esta sigue siendo la
-    // búsqueda vigente (no una vieja que fue cancelada)
-    if (controladorActual?.signal === signal) {
-      establecerBotonCargando(botonBuscar, false);
-    }
+  if (alPedirPronostico) {
+    document.getElementById('boton-pronostico').addEventListener('click', alPedirPronostico, { once: false });
   }
 }
 
 /**
- * mostrarClimaDeOpcion(opcion, signal)
- * Dada una ciudad ya elegida (sin ambigüedad), pide su clima y lo muestra.
+ * mostrarCargandoPronostico()
+ * Estado de carga específico para el bloque de pronóstico, que vive
+ * debajo de la tarjeta de clima actual.
  */
-async function mostrarClimaDeOpcion(opcion, signal) {
-  try {
-    establecerBotonCargando(botonBuscar, true);
-    const clima = await obtenerClimaPorCoordenadas(opcion.lat, opcion.lon, signal);
+export function mostrarCargandoPronostico() {
+  if (!contenedorPronostico) return;
+  contenedorPronostico.innerHTML = `
+    <div class="estado estado--cargando">
+      <span class="spinner" aria-hidden="true"></span>
+      <p>Cargando pronóstico...</p>
+    </div>
+  `;
+}
 
-    mostrarClima({
-      ciudad: opcion.pais ? `${opcion.ciudad}, ${opcion.pais}` : opcion.ciudad,
-      temperatura: clima.temperatura,
-      weathercode: clima.weathercode,
-      desdeCache: clima.desdeCache,
+/**
+ * mostrarPronostico(dias)
+ * ----------------------------
+ * Pinta una fila de tarjetas, una por día, con la temperatura
+ * máxima/mínima, el ícono del clima y la precipitación esperada.
+ *
+ * @param {Array<{ fecha: string, tempMax: number, tempMin: number, weathercode: number, precipitacionMm: number }>} dias
+ */
+export function mostrarPronostico(dias) {
+  if (!contenedorPronostico) return;
+
+  const tarjetas = dias
+    .map((dia, indice) => {
+      const etiquetaDia = formatearDiaSemana(dia.fecha, indice);
+      const icono = iconoWeatherCode(dia.weathercode);
+      return `
+        <article class="dia-pronostico">
+          <p class="dia-pronostico__dia">${etiquetaDia}</p>
+          <span class="dia-pronostico__icono" aria-hidden="true">${icono}</span>
+          <p class="dia-pronostico__temps">
+            <span class="dia-pronostico__max">${formatearTemperatura(dia.tempMax)}</span>
+            <span class="dia-pronostico__min">${formatearTemperatura(dia.tempMin)}</span>
+          </p>
+          <p class="dia-pronostico__precipitacion">🌧️ ${formatearPrecipitacion(dia.precipitacionMm)}</p>
+        </article>
+      `;
+    })
+    .join('');
+
+  contenedorPronostico.innerHTML = `
+    <h2 class="pronostico__titulo">Pronóstico de 5 días</h2>
+    <div class="pronostico__grid">${tarjetas}</div>
+  `;
+}
+
+export function mostrarError(mensaje, contenedor = contenedorResultado) {
+  contenedor.innerHTML = `
+    <div class="estado estado--error" role="alert">
+      <span aria-hidden="true">⚠️</span>
+      <p>${mensaje}</p>
+    </div>
+  `;
+}
+
+export function limpiarPantalla() {
+  contenedorResultado.innerHTML = `
+    <p class="placeholder">Escribe una ciudad para ver su clima.</p>
+  `;
+  if (contenedorPronostico) contenedorPronostico.innerHTML = '';
+}
+
+export function mostrarOpcionesCiudad(opciones, alElegir) {
+  const botones = opciones
+    .map((opcion, indice) => {
+      const etiqueta = opcion.pais ? `${opcion.ciudad}, ${opcion.pais}` : opcion.ciudad;
+      return `<button type="button" class="opcion-ciudad" data-indice="${indice}">${etiqueta}</button>`;
+    })
+    .join('');
+
+  contenedorResultado.innerHTML = `
+    <div class="estado estado--opciones">
+      <p>Encontramos varias ciudades. ¿Cuál buscabas?</p>
+      <div class="opciones-ciudad">${botones}</div>
+    </div>
+  `;
+
+  contenedorResultado.querySelectorAll('.opcion-ciudad').forEach((boton) => {
+    boton.addEventListener('click', () => {
+      const indice = Number(boton.dataset.indice);
+      alElegir(opciones[indice]);
     });
-  } catch (error) {
-    manejarError(error);
-  } finally {
-    establecerBotonCargando(botonBuscar, false);
-  }
+  });
+}
+
+export function establecerBotonCargando(boton, estaCargando, textoCargando = 'Buscando…', textoNormal = 'Buscar') {
+  boton.disabled = estaCargando;
+  boton.textContent = estaCargando ? textoCargando : textoNormal;
 }
 
 /**
- * manejarError(error)
- * Centraliza cómo reaccionamos a los distintos tipos de error.
+ * mostrarComparacion(resultados)
+ * -----------------------------------
+ * Pinta una tarjeta por cada ciudad consultada en el modo
+ * comparativo. Las ciudades que fallaron muestran su propio mensaje
+ * de error en vez de tumbar toda la comparación.
+ *
+ * @param {Array} resultados - Ver formato en api.js: obtenerClimaDeVariasCiudades()
  */
-function manejarError(error) {
-  // Una búsqueda cancelada a propósito (por una búsqueda más nueva)
-  // NO es un error real: simplemente no hacemos nada y dejamos que
-  // la búsqueda nueva tome el control de la pantalla.
-  if (error.name === 'AbortError') {
-    return;
-  }
+export function mostrarComparacion(resultados) {
+  if (!contenedorComparar) return;
 
-  if (error instanceof CiudadAmbiguaError) {
-    mostrarOpcionesCiudad(error.opciones, (opcionElegida) => {
-      mostrarClimaDeOpcion(opcionElegida, controladorActual.signal);
-    });
-    return;
-  }
+  const tarjetas = resultados
+    .map((resultado) => {
+      if (!resultado.ok) {
+        return `
+          <article class="comparar__tarjeta comparar__tarjeta--error">
+            <p class="comparar__ciudad">${resultado.nombreBuscado}</p>
+            <p class="comparar__error">⚠️ ${resultado.mensaje}</p>
+          </article>
+        `;
+      }
 
-  mostrarError(error.message);
+      const icono = iconoWeatherCode(resultado.weathercode);
+      const descripcion = traducirWeatherCode(resultado.weathercode);
+      return `
+        <article class="comparar__tarjeta">
+          <p class="comparar__ciudad">${resultado.ciudad}</p>
+          <span class="comparar__icono" aria-hidden="true">${icono}</span>
+          <p class="comparar__temperatura">${formatearTemperatura(resultado.temperatura)}</p>
+          <p class="comparar__descripcion">${descripcion}</p>
+          <div class="comparar__detalles">
+            <span>💧 ${formatearHumedad(resultado.humedad)}</span>
+            <span>💨 ${formatearViento(resultado.vientoKmh)}</span>
+            <span>🌧️ ${formatearPrecipitacion(resultado.precipitacionMm)}</span>
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+
+  contenedorComparar.innerHTML = `<div class="comparar__grid">${tarjetas}</div>`;
 }
 
-// Evento 1: clic en el botón "Buscar"
-botonBuscar.addEventListener('click', buscarClima);
+/**
+ * cambiarPestana(nombrePestana)
+ * ----------------------------------
+ * Alterna entre los paneles "individual" y "comparar", incluyendo el
+ * estilo de la pestaña activa y el atributo aria-selected.
+ *
+ * @param {'individual' | 'comparar'} nombrePestana
+ */
+export function cambiarPestana(nombrePestana) {
+  pestanas.forEach((pestana) => {
+    const esActiva = pestana.dataset.pestana === nombrePestana;
+    pestana.classList.toggle('pestana--activa', esActiva);
+    pestana.setAttribute('aria-selected', String(esActiva));
+  });
 
-// Evento 2: tecla Enter dentro del input
-inputCiudad.addEventListener('keydown', (evento) => {
-  if (evento.key === 'Enter') {
-    buscarClima();
-  }
-});
+  paneles.forEach((panel) => {
+    panel.classList.toggle('panel--oculto', panel.dataset.panel !== nombrePestana);
+  });
+}

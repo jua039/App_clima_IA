@@ -10,32 +10,71 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="/weather-app/css/styles.css" />
+  <link rel="stylesheet" href="/App_clima_IA/weather-app/css/styles.css" />
 </head>
 <body>
 
   <main class="tarjeta">
     <h1 class="titulo">🌤️ ¿Qué clima hace?</h1>
-    <p class="subtitulo">Escribe el nombre de una ciudad y presiona Enter o el botón.</p>
+    <p class="subtitulo">Consulta el clima actual, su pronóstico o compara varias ciudades a la vez.</p>
 
-    <!-- Zona de búsqueda -->
-    <div class="buscador">
-      <label for="ciudad" class="oculto">Nombre de la ciudad</label>
-      <input
-        type="text"
-        id="ciudad"
-        placeholder="Ej. Bogotá, Madrid, Tokio…"
-      />
-      <button id="buscar" type="button">Buscar</button>
+    <!-- Pestañas: alternan entre consulta individual y comparativa -->
+    <div class="pestanas" role="tablist">
+      <button
+        type="button"
+        class="pestana pestana--activa"
+        data-pestana="individual"
+        role="tab"
+        aria-selected="true"
+      >Clima actual</button>
+      <button
+        type="button"
+        class="pestana"
+        data-pestana="comparar"
+        role="tab"
+        aria-selected="false"
+      >Comparar ciudades</button>
     </div>
 
-    <!-- Aquí se muestra el resultado, el "cargando" o el error -->
-    <div id="resultado" aria-live="polite">
-      <p class="placeholder">Escribe una ciudad para ver su clima.</p>
-    </div>
+    <!-- Panel 1: consulta de una sola ciudad -->
+    <section class="panel" data-panel="individual">
+      <div class="buscador">
+        <label for="ciudad" class="oculto">Nombre de la ciudad</label>
+        <input
+          type="text"
+          id="ciudad"
+          placeholder="Ej. Bogotá, Madrid, Tokio…"
+        />
+        <button id="buscar" type="button">Buscar</button>
+      </div>
+
+      <!-- Aquí se muestra el resultado, el "cargando" o el error -->
+      <div id="resultado" aria-live="polite">
+        <p class="placeholder">Escribe una ciudad para ver su clima.</p>
+      </div>
+
+      <!-- Aquí se pinta el pronóstico de 5 días cuando el usuario lo pide -->
+      <div id="pronostico" aria-live="polite"></div>
+    </section>
+
+    <!-- Panel 2: comparación de varias ciudades -->
+    <section class="panel panel--oculto" data-panel="comparar">
+      <div class="buscador">
+        <label for="ciudades-comparar" class="oculto">Nombres de ciudades, separados por coma</label>
+        <input
+          type="text"
+          id="ciudades-comparar"
+          placeholder="Ej. Bogotá, Madrid, Tokio…"
+        />
+        <button id="comparar" type="button">Comparar</button>
+      </div>
+      <p class="ayuda">Separa cada ciudad con una coma.</p>
+
+      <div id="resultado-comparar" aria-live="polite"></div>
+    </section>
   </main>
 
   <!-- type="module" nos permite usar import/export entre archivos -->
-  <script type="module" src="/weather-app/js/main.js"></script>
+  <script type="module" src="/App_clima_IA/weather-app/js/main.js"></script>
 </body>
 </html>

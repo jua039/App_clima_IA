@@ -6,9 +6,11 @@
     --color-fondo: #131b34;
     --color-fondo-2: #1b2a4a;
     --color-acento: #f4a945;
+    --color-acento-2: #6fb7ff;
     --color-texto: #f7f9fc;
     --color-texto-tenue: #a9b3cc;
     --color-tarjeta: rgba(255, 255, 255, 0.06);
+    --color-tarjeta-2: rgba(255, 255, 255, 0.04);
     --color-borde: rgba(255, 255, 255, 0.12);
     --color-error: #ffb4b4;
 
@@ -51,7 +53,7 @@ body {
 ===================================================================== */
 .tarjeta {
     width: 100%;
-    max-width: 420px;
+    max-width: 480px;
     background: var(--color-tarjeta);
     border: 1px solid var(--color-borde);
     border-radius: var(--radio-grande);
@@ -75,12 +77,64 @@ body {
 }
 
 /* =====================================================================
+   Pestañas: alternan entre "Clima actual" y "Comparar ciudades"
+===================================================================== */
+.pestanas {
+    display: flex;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--color-borde);
+    border-radius: 999px;
+    padding: 4px;
+    margin-bottom: 24px;
+}
+
+.pestana {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--color-texto-tenue);
+    font-family: var(--fuente-texto);
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pestana:hover {
+    color: var(--color-texto);
+}
+
+.pestana--activa {
+    background: var(--color-acento);
+    color: #1b1200;
+}
+
+.pestana:focus-visible {
+    outline: 2px solid var(--color-acento);
+    outline-offset: 2px;
+}
+
+.panel--oculto {
+    display: none;
+}
+
+.ayuda {
+    margin: -14px 0 18px;
+    font-size: 0.78rem;
+    color: var(--color-texto-tenue);
+    text-align: left;
+}
+
+/* =====================================================================
    Buscador (input + botón)
 ===================================================================== */
 .buscador {
     display: flex;
     gap: 8px;
-    margin-bottom: 24px;
+    margin-bottom: 10px;
 }
 
 .buscador input {
@@ -92,6 +146,7 @@ body {
     color: var(--color-texto);
     font-family: var(--fuente-texto);
     font-size: 1rem;
+    min-width: 0;
 }
 
 .buscador input::placeholder {
@@ -112,6 +167,7 @@ body {
     color: #1b1200;
     font-weight: 600;
     cursor: pointer;
+    white-space: nowrap;
     transition: background 0.15s ease, transform 0.15s ease;
 }
 
@@ -123,10 +179,15 @@ body {
     transform: scale(0.97);
 }
 
+.panel[data-panel="individual"] .buscador {
+    margin-bottom: 24px;
+}
+
 /* =====================================================================
    Contenedor de resultado (placeholder, loading, error, clima)
 ===================================================================== */
-#resultado {
+#resultado,
+#resultado-comparar {
     min-height: 120px;
     display: flex;
     align-items: center;
@@ -144,6 +205,7 @@ body {
     align-items: center;
     gap: 8px;
     font-size: 0.9rem;
+    width: 100%;
 }
 
 .estado--error {
@@ -217,22 +279,40 @@ body {
     cursor: not-allowed;
 }
 
-/* Tarjeta de clima */
+/* =====================================================================
+   Tarjeta de clima actual
+===================================================================== */
+.clima {
+    width: 100%;
+}
+
 .clima__ciudad {
-    margin: 0 0 8px;
+    margin: 0 0 6px;
     font-weight: 600;
     font-size: 1.05rem;
 }
 
+.clima__cabecera {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.clima__icono {
+    font-size: 2.4rem;
+    line-height: 1;
+}
+
 .clima__temperatura {
-    margin: 0 0 4px;
+    margin: 0;
     font-family: var(--fuente-titulo);
-    font-size: 2.6rem;
+    font-size: 2.8rem;
     font-weight: 700;
 }
 
 .clima__descripcion {
-    margin: 0 0 10px;
+    margin: 4px 0 10px;
     color: var(--color-acento);
     font-weight: 500;
 }
@@ -245,11 +325,217 @@ body {
     background: rgba(244, 169, 69, 0.15);
     color: var(--color-acento);
     border: 1px solid rgba(244, 169, 69, 0.3);
+    margin-bottom: 14px;
+}
+
+/* Grid de detalles: humedad / viento / precipitación */
+.clima__detalles {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.detalle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-tarjeta-2);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-chico);
+    padding: 12px 6px;
+}
+
+.detalle__icono {
+    font-size: 1.2rem;
+}
+
+.detalle__etiqueta {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-texto-tenue);
+}
+
+.detalle__valor {
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+/* Botón secundario: "Ver pronóstico de 5 días" */
+.boton-secundario {
+    margin-top: 18px;
+    width: 100%;
+    padding: 11px 16px;
+    border-radius: var(--radio-chico);
+    border: 1px solid var(--color-borde);
+    background: rgba(111, 183, 255, 0.1);
+    color: var(--color-texto);
+    font-family: var(--fuente-texto);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.boton-secundario:hover {
+    background: rgba(111, 183, 255, 0.2);
+}
+
+.boton-secundario:active {
+    transform: scale(0.98);
+}
+
+.boton-secundario:focus-visible {
+    outline: 2px solid var(--color-acento-2);
+    outline-offset: 2px;
+}
+
+/* =====================================================================
+   Pronóstico de 5 días
+===================================================================== */
+#pronostico {
+    margin-top: 20px;
+}
+
+.pronostico__titulo {
+    margin: 0 0 12px;
+    font-family: var(--fuente-texto);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-texto-tenue);
+    text-align: left;
+}
+
+.pronostico__grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+.dia-pronostico {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-tarjeta-2);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-chico);
+    padding: 10px 4px;
+}
+
+.dia-pronostico__dia {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-texto-tenue);
+}
+
+.dia-pronostico__icono {
+    font-size: 1.4rem;
+    margin: 2px 0;
+}
+
+.dia-pronostico__temps {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.dia-pronostico__max {
+    font-weight: 700;
+    font-size: 0.82rem;
+}
+
+.dia-pronostico__min {
+    font-size: 0.72rem;
+    color: var(--color-texto-tenue);
+}
+
+.dia-pronostico__precipitacion {
+    margin: 2px 0 0;
+    font-size: 0.65rem;
+    color: var(--color-acento-2);
+    white-space: nowrap;
+}
+
+/* =====================================================================
+   Modo comparativo
+===================================================================== */
+.comparar__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    width: 100%;
+}
+
+.comparar__tarjeta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-tarjeta-2);
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio-chico);
+    padding: 16px 10px;
+}
+
+.comparar__tarjeta--error {
+    background: rgba(220, 90, 90, 0.1);
+    border-color: rgba(220, 90, 90, 0.35);
+}
+
+.comparar__ciudad {
+    margin: 0 0 4px;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.comparar__icono {
+    font-size: 1.8rem;
+}
+
+.comparar__temperatura {
+    margin: 2px 0 0;
+    font-family: var(--fuente-titulo);
+    font-weight: 700;
+    font-size: 1.5rem;
+}
+
+.comparar__descripcion {
+    margin: 0 0 8px;
+    color: var(--color-acento);
+    font-size: 0.78rem;
+}
+
+.comparar__detalles {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.7rem;
+    color: var(--color-texto-tenue);
+}
+
+.comparar__error {
+    color: var(--color-error);
+    font-size: 0.78rem;
+    margin: 4px 0 0;
 }
 
 /* =====================================================================
    Responsive
 ===================================================================== */
+@media (min-width: 640px) {
+    .tarjeta {
+        max-width: 560px;
+    }
+}
+
 @media (max-width: 400px) {
     .tarjeta {
         padding: 26px 18px;
@@ -261,5 +547,18 @@ body {
 
     .clima__temperatura {
         font-size: 2.2rem;
+    }
+
+    .pronostico__grid {
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(76px, 1fr);
+        grid-template-columns: none;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scroll-snap-type: x proximity;
+    }
+
+    .dia-pronostico {
+        scroll-snap-align: start;
     }
 }
